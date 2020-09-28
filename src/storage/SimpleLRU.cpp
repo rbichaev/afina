@@ -3,43 +3,109 @@
 namespace Afina {
 namespace Backend {
 
+// удаляем последние элементы списка, пока не влезет новый
+void SimpleLRU::ClearFromEnd(const std::size_t size_of_new)
+{
+    while (size_of_new > _max_size - _current_size)
+    {
+        if (_last_node->next)
+        {
+            _lru_index.erase(_last_node->key);
+            _current_size -= _last_node->key.size() + _last_node->value.size();
+            lru_node *tmp_ptr = _last_node->next;
+            tmp_ptr->prev.reset();
+            _last_node = tmp_ptr;
+        }
+        else
+        {
+            _lru_index.erase(_last_node->key);
+            _current_size -= _last_node->key.size() + _last_node->value.size();
+            _lru_head.reset();
+            _last_node = nullptr;
+        }
+    }
+}
+
+// переставляем элемент в начало списка
+void SimpleLRU::MakeFirst(lru_node *current_node)
+{
+    // "удаляем" его из середины списка
+    // если это головная вершина, то ничего не переставляем
+    if (_lru_head.get() != current_node)
+    {
+        // у нынешней головной структуры нет next - нужно его поставить
+        if ((current_node->prev).get())
+        {
+            _lru_head.get()->next = current_node->prev.get()->next;
+        }
+        else
+        {
+            _lru_head.get()->next = _last_node;
+        }
+
+        // (если это не головная структура, то у нее есть next)
+        // если у следующего за рассматриваемым нет следующего, то
+        // им станет рассматриваемый
+        if (!(current_node->next)->next)
+        {
+            (current_node->next)->next = ((current_node->next)->prev).get();
+        }
+
+        // нельзя терять прошлый элемент
+        if (current_node->prev.get())
+        {
+            (current_node->prev.get())->next = current_node->next;
+        }
+        // если нет прошлого, то этот сейчас последний, и
+        // тогда последним станет следующий за ним, а он есть
+        // так как мы в этом if'е => делаем его последним
+        else
+        {
+            _last_node = current_node->next;
+        }
+
+        // создаем временный умный указатель для осуществления перестановки
+        std::unique_ptr<lru_node> tmp_ptr;
+        tmp_ptr = std::move(current_node->prev);
+
+        // если это не головная вершина, то у нее есть next
+        current_node->prev = std::move(_lru_head);
+        _lru_head = std::move((current_node->next)->prev);
+        (current_node->next)->prev = std::move(tmp_ptr);
+
+        // у головной вершины не может быть следующей
+        current_node->next = nullptr;
+    }
+}
+
 // See MapBasedGlobalLockImpl.h
 bool SimpleLRU::Put(const std::string &key, const std::string &value)
 {
-    bool result;
+    // размер нового элемента
+    std::size_t size_of_new = key.size() + value.size();
 
-    std::string k = key;
-    std::reference_wrapper<std::string> a(k);
+    // влезет вообще или нет
+    if (size_of_new > _max_size)
+    {
+        return false;
+    }
+
+    bool result = false;
+
+    std::reference_wrapper<const std::string> wrap_key(key);
+    auto key_iterator = _lru_index.find(wrap_key);
 
     // вызываем PutIfAbsent или Set в зависимости от того,
     // есть ли нужный ключ в двусвязном списке
-    if (_lru_index.find(a) == _lru_index.end())
+    if (key_iterator == _lru_index.end())
     {
-
-        // размер нового элемента
-        std::size_t size_of_new = key.size() + value.size();
-
-        // влезет вообще или нет
-        if (size_of_new > _max_size)
-        {
-            return false;
-        }
-
-        // влезет или нет с учетом уже имеющихся
-        if (size_of_new > _max_size - _current_size)
-        {
-            // удаляем последние, пока не влезет
-            while (size_of_new > _max_size - _current_size)
-            {
-                const std::string k = _last_node->key;
-                this->Delete(k);
-            }
-        }
-
+        _found = true;
+        _found_iterator = key_iterator;
         result = PutIfAbsent(key, value);
     }
     else
     {
+        _found = false;
         result = Set(key, value);
     }
 
@@ -49,39 +115,62 @@ bool SimpleLRU::Put(const std::string &key, const std::string &value)
 // See MapBasedGlobalLockImpl.h
 bool SimpleLRU::PutIfAbsent(const std::string &key, const std::string &value)
 {
-    std::string *k = new std::string(key);
-    std::reference_wrapper<std::string> a(*k);
+    // размер нового элемента
+    std::size_t size_of_new = key.size() + value.size();
+
+    // влезет вообще или нет
+    if (size_of_new > _max_size)
+    {
+        return false;
+    }
+
+    // влезет или нет с учетом уже имеющихся
+    if (size_of_new > _max_size - _current_size)
+    {
+        this->ClearFromEnd(size_of_new);
+    }
+
+    std::reference_wrapper<const std::string> wrap_key(key);
+    std::map<std::reference_wrapper<const std::string>, std::reference_wrapper<lru_node>, std::less<std::string>>::iterator key_iterator;
+
+    if (_found == true)
+    {
+        _found = false;
+        key_iterator = _found_iterator;
+    }
+    else
+    {
+        key_iterator = _lru_index.find(wrap_key);
+    }
 
     // если ключ уже есть, возвращаем false
-    if (_lru_index.find(a) != _lru_index.end())
+    if (key_iterator != _lru_index.end())
     {
-        delete k;
         return false;
     }
 
     // создаем новую структуру-вершину и инициализируем ее
-    std::unique_ptr<lru_node> new_node_ptr(new lru_node(key));
-    std::reference_wrapper<lru_node> b(*new_node_ptr.get());
-
-    b.get().value = value;
-    b.get().key_pointer_in_tree = k;
+    std::unique_ptr<lru_node> new_node_ptr(new lru_node(key, value));
+    std::reference_wrapper<lru_node> wrap_value(*new_node_ptr.get());
 
     // если уже есть другие элементы:
     if (_lru_head)
     {
         (_lru_head.get())->next = new_node_ptr.get();
-        b.get().prev = std::move(_lru_head);
+        wrap_value.get().prev = std::move(_lru_head);
     }
     // других элементов нет - этот первый:
     else
     {
-        _last_node = &b.get();
+        _last_node = &wrap_value.get();
     }
 
     _lru_head = std::move(new_node_ptr);
 
+    std::reference_wrapper<const std::string> wrap_key_map(wrap_value.get().key);
+
     // добавляем пару (ключ, структура) в дерево
-    _lru_index.insert({a, b});
+    _lru_index.insert({wrap_key_map, wrap_value});
 
     _current_size += key.size() + value.size();
 
@@ -91,57 +180,53 @@ bool SimpleLRU::PutIfAbsent(const std::string &key, const std::string &value)
 // See MapBasedGlobalLockImpl.h
 bool SimpleLRU::Set(const std::string &key, const std::string &value)
 {
-    std::string k = key;
-    std::reference_wrapper<std::string> a(k);
+    // размер нового элемента
+    std::size_t size_of_new = key.size() + value.size();
 
-    // если ключа нет, возвращаем false
-    if (_lru_index.find(a) == _lru_index.end())
+    // влезет вообще или нет
+    if (size_of_new > _max_size)
     {
         return false;
     }
 
-    // переносим элемент в начало двусвязного списка:
+    std::reference_wrapper<const std::string> wrap_key(key);
+    std::map<std::reference_wrapper<const std::string>, std::reference_wrapper<lru_node>, std::less<std::string>>::iterator key_iterator;
 
-    // "удаляем" его из середины списка
-    // если это головная вершина, то ничего не переставляем
-    if (_lru_head.get() != &_lru_index.at(a).get())
+    if (_found == true)
     {
-        // (если это не головная структура, то у нее есть next)
-        // если у следующего за рассматриваемым нет следующего, то
-        // им станет рассматриваемый
-        if (!(_lru_index.at(a).get().next)->next)
-        {
-            (_lru_index.at(a).get().next)->next = (_lru_index.at(a).get().next)->prev.get();
-        }
-
-        // нельзя терять прошлый элемент
-        if (_lru_index.at(a).get().prev.get())
-        {
-            (_lru_index.at(a).get().prev.get())->next = _lru_index.at(a).get().next;
-        }
-        // если нет прошлого, то этот сейчас последний, и
-        // тогда последним станет следующий за ним, а он есть
-        // так как мы в этом if'е => делаем его последним
-        else
-        {
-            _last_node = _lru_index.at(a).get().next;
-        }
-
-        // создаем временный умный указатель для осуществления перестановки
-        std::unique_ptr<lru_node> tmp_ptr;
-        tmp_ptr = std::move(_lru_index.at(a).get().prev);
-
-        // если это не головная вершина, то у нее есть next
-        _lru_index.at(a).get().prev = std::move(_lru_head);
-        _lru_head = std::move((_lru_index.at(a).get().next)->prev);
-        (_lru_index.at(a).get().next)->prev = std::move(tmp_ptr);
-
-        // у головной вершины не может быть следующей
-        _lru_index.at(a).get().next = nullptr;
+        _found = false;
+        key_iterator = _found_iterator;
+    }
+    else
+    {
+        key_iterator = _lru_index.find(wrap_key);
     }
 
-    _current_size -= _lru_index.at(a).get().value.size();
-    _lru_index.at(a).get().value = value;
+    // если ключа нет, возвращаем false
+    if (key_iterator == _lru_index.end())
+    {
+        return false;
+    }
+
+    // сначала ставим элемент в начало, а потом освобождаем место:
+
+    lru_node *current_node = &(key_iterator->second).get();
+
+    // переносим элемент в начало двусвязного списка:
+    if (_lru_head.get() != current_node)
+    {
+        this->MakeFirst(current_node);
+    }
+
+    // сразу убираем размер имеющегося value, чтобы не делать лишних удалений
+    _current_size -= current_node->value.size();
+
+    if (size_of_new > _max_size - _current_size)
+    {
+        this->ClearFromEnd(size_of_new);
+    }
+
+    current_node->value = value;
     _current_size += value.size();
 
     return true;
@@ -150,69 +235,61 @@ bool SimpleLRU::Set(const std::string &key, const std::string &value)
 // See MapBasedGlobalLockImpl.h
 bool SimpleLRU::Delete(const std::string &key)
 {
-    std::string k = key;
-    std::reference_wrapper<std::string> a(k);
-    std::unique_ptr<lru_node> current_block_ptr;
+    std::reference_wrapper<const std::string> wrap_key(key);
+    auto key_iterator = _lru_index.find(wrap_key);
+    std::unique_ptr<lru_node> current_node_ptr;
 
     // если ключа нет, возвращаем false
-    if (_lru_index.find(a) == _lru_index.end())
+    if (key_iterator == _lru_index.end())
     {
         return false;
     }
 
+    lru_node *current_node = &(key_iterator->second).get();
+
     // чтобы не потерять unique_ptr на удаляемую структуру
     // в ходе перестановок указателей, временно сохраним его
-    if (_lru_index.at(a).get().next)
+    if (current_node->next)
     {
-        current_block_ptr = std::move(_lru_index.at(a).get().next->prev);
+        current_node_ptr = std::move(current_node->next->prev);
     }
     else
     {
-        current_block_ptr = std::move(_lru_head);
+        current_node_ptr = std::move(_lru_head);
     }
 
-    // "удаляем" из середины списка:
+    // "удаляем" из списка - отдельно рассматриваем наличие
+    // прошлого и следующего элемента в списке:
 
-    if (_lru_index.at(a).get().prev.get())
+    // STEP 1 - наличие прошлого:
+    if (current_node->prev.get())
     {
-        (_lru_index.at(a).get().prev)->next = _lru_index.at(a).get().next;
+        (current_node->prev)->next = current_node->next;
     }
     // если это последний, то ставим указатель на следующий элемент в качестве
     // последнего (не важно nullptr это или нет)
     else
     {
-        if (_last_node == &_lru_index.at(a).get())
-        {
-            (_lru_index.at(a).get().next)->prev = std::move(_lru_index.at(a).get().prev);
-        }
-
-        _last_node = _lru_index.at(a).get().next;
+        _last_node = current_node->next;
     }
 
-    if (_lru_index.at(a).get().next)
+    // STEP 2 - наличие следующего:
+    if (current_node->next)
     {
-        if (_lru_index.at(a).get().prev.get())
+        if (current_node->prev.get())
         {
-            (_lru_index.at(a).get().next)->prev = std::move(_lru_index.at(a).get().prev);
+            (current_node->next)->prev = std::move(current_node->prev);
         }
     }
     else
     {
-        if (_lru_index.at(a).get().prev.get())
-        {
-            _lru_head = std::move(_lru_index.at(a).get().prev);
-        }
+        _lru_head = std::move(current_node->prev);
     }
 
-    std::string *key_ptr = _lru_index.at(a).get().key_pointer_in_tree;
-
-    _current_size -= key.size() + _lru_index.at(a).get().value.size();
+    _current_size -= key.size() + current_node->value.size();
 
     // удаляем из дерева
-    _lru_index.erase(a);
-
-    // очищаем память
-    delete key_ptr;
+    _lru_index.erase(wrap_key);
 
     return true;
 }
@@ -220,16 +297,23 @@ bool SimpleLRU::Delete(const std::string &key)
 // See MapBasedGlobalLockImpl.h
 bool SimpleLRU::Get(const std::string &key, std::string &value)
 {
-    std::string k = key;
-    std::reference_wrapper<std::string> a(k);
+    std::reference_wrapper<const std::string> wrap_key(key);
+    auto key_iterator = _lru_index.find(wrap_key);
 
     // если ключа нет, возвращаем false
-    if (_lru_index.find(a) == _lru_index.end())
+    if (key_iterator == _lru_index.end())
     {
         return false;
     }
 
-    value = _lru_index.at(a).get().value;
+    lru_node *current_node = &(key_iterator->second).get();
+    value = current_node->value;
+
+    // переносим элемент в начало двусвязного списка:
+    if (_lru_head.get() != current_node)
+    {
+        this->MakeFirst(current_node);
+    }
 
     return true;
 }

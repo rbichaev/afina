@@ -6,6 +6,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <vector>
 
 #include <afina/Storage.h>
 
@@ -22,16 +23,19 @@ public:
 
     ~SimpleLRU()
     {
-        std::cout << "in destructor of object" << '\n';
-        for (auto [keyy, valuee] : _lru_index)
-        {
-            delete &keyy.get();
-        }
-
-        _current_size = 0;
-
         _lru_index.clear();
-        // _lru_head.reset();
+
+        std::unique_ptr<lru_node> node_ptr;
+        std::unique_ptr<lru_node> prev_node_ptr;
+
+        node_ptr = std::move(_lru_head);
+
+        for (; node_ptr.get() != nullptr;)
+        {
+            prev_node_ptr = std::move(node_ptr.get()->prev);
+            node_ptr.reset();
+            node_ptr = std::move(prev_node_ptr);
+        }
     }
 
     // Implements Afina::Storage interface
@@ -50,16 +54,20 @@ public:
     bool Get(const std::string &key, std::string &value) override;
 
 private:
+
+    void ClearFromEnd(const std::size_t size_of_new);
+
     // LRU cache node
     using lru_node = struct lru_node {
         const std::string key;
-        std::string *key_pointer_in_tree = nullptr;
         std::string value;
         std::unique_ptr<lru_node> prev;
         lru_node *next = nullptr;
 
-        lru_node(const std::string &k) : key(k) {}
+        lru_node(const std::string &k, const std::string &v) : key(k), value(v) {}
     };
+
+    void MakeFirst(lru_node *current_node);
 
     // Maximum number of bytes could be stored in this cache.
     // i.e all (keys+values) must be less the _max_size
@@ -78,7 +86,13 @@ private:
     lru_node *_last_node = nullptr;
 
     // Index of nodes from list above, allows fast random access to elements by lru_node#key
-    std::map<std::reference_wrapper<std::string>, std::reference_wrapper<lru_node>, std::less<std::string>> _lru_index;
+    std::map<std::reference_wrapper<const std::string>, std::reference_wrapper<lru_node>, std::less<std::string>> _lru_index;
+
+    // при использовании метода Put мы проверяем, есть ли элемент в списке, затем вызываем
+    // один из методов PutIfAbsent или Set. Чтобы еще раз не искать элемент в этих методах,
+    // будем совместно использовать следующие два атрибута:
+    bool _found = false;
+    std::map<std::reference_wrapper<const std::string>, std::reference_wrapper<lru_node>, std::less<std::string>>::iterator _found_iterator;
 };
 
 } // namespace Backend
