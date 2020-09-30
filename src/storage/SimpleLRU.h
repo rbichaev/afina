@@ -7,6 +7,7 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include <utility>
 
 #include <afina/Storage.h>
 
@@ -18,40 +19,6 @@ namespace Backend {
  * That is NOT thread safe implementaiton!!
  */
 class SimpleLRU : public Afina::Storage {
-public:
-    SimpleLRU(size_t max_size = 1024) : _max_size(max_size) {}
-
-    ~SimpleLRU()
-    {
-        _lru_index.clear();
-
-        std::unique_ptr<lru_node> node_ptr;
-        std::unique_ptr<lru_node> prev_node_ptr;
-
-        node_ptr = std::move(_lru_head);
-
-        for (; node_ptr.get() != nullptr;)
-        {
-            prev_node_ptr = std::move(node_ptr.get()->prev);
-            node_ptr.reset();
-            node_ptr = std::move(prev_node_ptr);
-        }
-    }
-
-    // Implements Afina::Storage interface
-    bool Put(const std::string &key, const std::string &value) override;
-
-    // Implements Afina::Storage interface
-    bool PutIfAbsent(const std::string &key, const std::string &value) override;
-
-    // Implements Afina::Storage interface
-    bool Set(const std::string &key, const std::string &value) override;
-
-    // Implements Afina::Storage interface
-    bool Delete(const std::string &key) override;
-
-    // Implements Afina::Storage interface
-    bool Get(const std::string &key, std::string &value) override;
 
 private:
 
@@ -88,11 +55,44 @@ private:
     // Index of nodes from list above, allows fast random access to elements by lru_node#key
     std::map<std::reference_wrapper<const std::string>, std::reference_wrapper<lru_node>, std::less<std::string>> _lru_index;
 
-    // при использовании метода Put мы проверяем, есть ли элемент в списке, затем вызываем
-    // один из методов PutIfAbsent или Set. Чтобы еще раз не искать элемент в этих методах,
-    // будем совместно использовать следующие два атрибута:
-    bool _found = false;
-    std::map<std::reference_wrapper<const std::string>, std::reference_wrapper<lru_node>, std::less<std::string>>::iterator _found_iterator;
+public:
+    SimpleLRU(size_t max_size = 1024) : _max_size(max_size) {}
+
+    ~SimpleLRU()
+    {
+        _lru_index.clear();
+
+        std::unique_ptr<lru_node> node_ptr;
+        std::unique_ptr<lru_node> prev_node_ptr;
+
+        node_ptr = std::move(_lru_head);
+
+        for (; node_ptr.get() != nullptr;)
+        {
+            prev_node_ptr = std::move(node_ptr.get()->prev);
+            node_ptr.reset();
+            node_ptr = std::move(prev_node_ptr);
+        }
+    }
+
+    // Implements Afina::Storage interface
+    bool Put(const std::string &key, const std::string &value) override;
+
+    // Implements Afina::Storage interface
+    bool PutIfAbsent(const std::string &key, const std::string &value) override;
+
+    bool PutIfAbsent(const std::string &key, const std::string &value, std::map<std::reference_wrapper<const std::string>, std::reference_wrapper<lru_node>, std::less<std::string>>::iterator &key_iterator);
+
+    // Implements Afina::Storage interface
+    bool Set(const std::string &key, const std::string &value) override;
+
+    bool Set(const std::string &key, const std::string &value, std::map<std::reference_wrapper<const std::string>, std::reference_wrapper<lru_node>, std::less<std::string>>::iterator &key_iterator);
+
+    // Implements Afina::Storage interface
+    bool Delete(const std::string &key) override;
+
+    // Implements Afina::Storage interface
+    bool Get(const std::string &key, std::string &value) override;
 };
 
 } // namespace Backend
