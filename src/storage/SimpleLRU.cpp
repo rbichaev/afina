@@ -126,7 +126,7 @@ bool SimpleLRU::PutIfAbsent(const std::string &key, const std::string &value)
         this->ClearFromEnd(size_of_new);
     }
 
-    std::map<std::reference_wrapper<const std::string>, std::reference_wrapper<lru_node>, std::less<std::string>>::iterator key_iterator;
+    iterator_type key_iterator;
 
     key_iterator = _lru_index.find(key);
 
@@ -162,7 +162,7 @@ bool SimpleLRU::PutIfAbsent(const std::string &key, const std::string &value)
 }
 
 // перегрузка прошлого метода с передачей итератора
-bool SimpleLRU::PutIfAbsent(const std::string &key, const std::string &value, std::map<std::reference_wrapper<const std::string>, std::reference_wrapper<lru_node>, std::less<std::string>>::iterator &key_iterator)
+bool SimpleLRU::PutIfAbsent(const std::string &key, const std::string &value, iterator_type &key_iterator)
 {
     // размер нового элемента
     std::size_t size_of_new = key.size() + value.size();
@@ -222,7 +222,7 @@ bool SimpleLRU::Set(const std::string &key, const std::string &value)
         return false;
     }
 
-    std::map<std::reference_wrapper<const std::string>, std::reference_wrapper<lru_node>, std::less<std::string>>::iterator key_iterator;
+    iterator_type key_iterator;
 
     key_iterator = _lru_index.find(key);
 
@@ -257,7 +257,7 @@ bool SimpleLRU::Set(const std::string &key, const std::string &value)
 }
 
 // перегрузка прошлого метода с передачей итератора
-bool SimpleLRU::Set(const std::string &key, const std::string &value, std::map<std::reference_wrapper<const std::string>, std::reference_wrapper<lru_node>, std::less<std::string>>::iterator &key_iterator)
+bool SimpleLRU::Set(const std::string &key, const std::string &value, iterator_type &key_iterator)
 {
     // размер нового элемента
     std::size_t size_of_new = key.size() + value.size();
