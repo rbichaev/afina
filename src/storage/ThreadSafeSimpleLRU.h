@@ -22,36 +22,56 @@ public:
 
     // see SimpleLRU.h
     bool Put(const std::string &key, const std::string &value) override {
-        // TODO: sinchronization
-        return SimpleLRU::Put(key, value);
+        bool result = false;
+        {
+            std::unique_lock<std::mutex> _ul(_mutex);
+            result = SimpleLRU::Put(key, value);
+        }
+        return result;
     }
 
     // see SimpleLRU.h
     bool PutIfAbsent(const std::string &key, const std::string &value) override {
-        // TODO: sinchronization
-        return SimpleLRU::PutIfAbsent(key, value);
+        bool result = false;
+        {
+            std::unique_lock<std::mutex> _ul(_mutex);
+            result = SimpleLRU::PutIfAbsent(key, value);
+        }
+        return result;
     }
 
     // see SimpleLRU.h
     bool Set(const std::string &key, const std::string &value) override {
-        // TODO: sinchronization
-        return SimpleLRU::Set(key, value);
+        bool result = false;
+        {
+            std::unique_lock<std::mutex> _ul(_mutex);
+            result = SimpleLRU::Set(key, value);
+        }
+        return result;
     }
 
     // see SimpleLRU.h
     bool Delete(const std::string &key) override {
-        // TODO: sinchronization
-        return SimpleLRU::Delete(key);
+        bool result = false;
+        {
+            std::unique_lock<std::mutex> _ul(_mutex);
+            result = SimpleLRU::Delete(key);
+        }
+        return result;
     }
 
     // see SimpleLRU.h
     bool Get(const std::string &key, std::string &value) override {
-        // TODO: sinchronization
-        return SimpleLRU::Get(key, value);
+        bool result = false;
+        {
+            std::unique_lock<std::mutex> _ul(_mutex);
+            result = SimpleLRU::Get(key, value);
+        }
+        return result;
     }
 
 private:
-    // TODO: sinchronization primitives
+    std::mutex _mutex;
 };
 
 } // namespace Backend

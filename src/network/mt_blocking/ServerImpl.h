@@ -3,6 +3,9 @@
 
 #include <atomic>
 #include <thread>
+#include <condition_variable>
+#include <vector>
+#include <algorithm>
 
 #include <afina/network/Server.h>
 
@@ -36,6 +39,7 @@ protected:
     /**
      * Method is running in the connection acceptor thread
      */
+    void RunThread(const int client_socket);
     void OnRun();
 
 private:
@@ -52,6 +56,18 @@ private:
 
     // Thread to run network on
     std::thread _thread;
+
+    // максимальное число возможных потоков
+    const int _max_num_of_threads = 100;
+
+    // вектор сокетов рабочих потоков
+    std::vector<int> _vector_client_sockets;
+
+    // мьютекс для работы с вставкой/удалением из этого вектора
+    std::mutex _mutex_vector;
+
+    // conditional variable для ожидания завершения всех потоков в методе Join
+    std::condition_variable _cond_var;
 };
 
 } // namespace MTblocking
