@@ -81,7 +81,8 @@ void ServerImpl::Stop() {
     running.store(false);
     shutdown(_server_socket, SHUT_RDWR);
 
-    for (auto elem : _vector_client_sockets)
+    std::unique_lock<std::mutex> _ul_ms(_mutex_set);
+    for (auto elem : _set_client_sockets)
     {
         shutdown(elem, SHUT_RD);
     }
@@ -89,16 +90,14 @@ void ServerImpl::Stop() {
 
 // See Server.h
 void ServerImpl::Join() {
+
     assert(_thread.joinable());
     _thread.join();
-    close(_server_socket);
 
+    std::unique_lock<std::mutex> _ul_ms(_mutex_set);
+    while (!_set_client_sockets.empty())
     {
-        std::unique_lock<std::mutex> _lg_mv(_mutex_vector);
-        while (!_vector_client_sockets.empty())
-        {
-            _cond_var.wait(_lg_mv);
-        }
+        _cond_var.wait(_ul_ms);
     }
 }
 
@@ -108,14 +107,14 @@ void ServerImpl::RunThread(const int client_socket)
     // - command_to_execute: last command parsed out of stream
     // - arg_remains: how many bytes to read from stream to get command argument
     // - argument_for_command: buffer stores argument
-    std::size_t arg_remains;
+    std::size_t arg_remains = 0;
     Protocol::Parser parser;
     std::string argument_for_command;
     std::unique_ptr<Execute::Command> command_to_execute;
 
     try {
         int readed_bytes = -1;
-        char client_buffer[4096];
+        char client_buffer[4096] = "\0";
         while ((readed_bytes = read(client_socket, client_buffer, sizeof(client_buffer))) > 0) {
             _logger->debug("Got {} bytes from socket", readed_bytes);
 
@@ -196,18 +195,15 @@ void ServerImpl::RunThread(const int client_socket)
     // We are done with this connection
     close(client_socket);
 
-    // Prepare for the next command: just in case if connection was closed in the middle of executing something
-    command_to_execute.reset();
-    argument_for_command.resize(0);
-    parser.Reset();
-
     {
-        std::unique_lock<std::mutex> _lg_mv(_mutex_vector);
-        std::vector<int>::iterator position = std::find(_vector_client_sockets.begin(), _vector_client_sockets.end(), client_socket);
-        _vector_client_sockets.erase(position);
+        std::unique_lock<std::mutex> _ul_ms(_mutex_set);
+        _set_client_sockets.erase(client_socket);
     }
 
-    _cond_var.notify_all();
+    if (_set_client_sockets.empty() && running.load() == false)
+    {
+        _cond_var.notify_all();
+    }
 }
 
 // See Server.h
@@ -247,18 +243,16 @@ void ServerImpl::OnRun() {
         }
 
         // TODO: Start new thread and process data from/to connection
+        std::unique_lock<std::mutex> _lg_ms(_mutex_set);
+        if (_set_client_sockets.size() < _max_num_of_threads)
         {
-            std::unique_lock<std::mutex> _lg_mv(_mutex_vector);
-            if (_vector_client_sockets.size() < _max_num_of_threads)
-            {
-                _vector_client_sockets.push_back(client_socket);
-                std::thread thr(&ServerImpl::RunThread, this, client_socket);
-                thr.detach();
-            }
-            else
-            {
-                close(client_socket);
-            }
+            _set_client_sockets.insert(client_socket);
+            std::thread thr(&ServerImpl::RunThread, this, client_socket);
+            thr.detach();
+        }
+        else
+        {
+            close(client_socket);
         }
 
 
@@ -270,6 +264,8 @@ void ServerImpl::OnRun() {
         //     close(client_socket);
         // }
     }
+
+    close(_server_socket);
 
     // Cleanup on exit...
     _logger->warn("Network stopped");

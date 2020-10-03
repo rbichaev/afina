@@ -22,52 +22,32 @@ public:
 
     // see SimpleLRU.h
     bool Put(const std::string &key, const std::string &value) override {
-        bool result = false;
-        {
-            std::unique_lock<std::mutex> _ul(_mutex);
-            result = SimpleLRU::Put(key, value);
-        }
-        return result;
+        std::unique_lock<std::mutex> _ul(_mutex);
+        return SimpleLRU::Put(key, value);;
     }
 
     // see SimpleLRU.h
     bool PutIfAbsent(const std::string &key, const std::string &value) override {
-        bool result = false;
-        {
-            std::unique_lock<std::mutex> _ul(_mutex);
-            result = SimpleLRU::PutIfAbsent(key, value);
-        }
-        return result;
+        std::unique_lock<std::mutex> _ul(_mutex);
+        return SimpleLRU::PutIfAbsent(key, value);
     }
 
     // see SimpleLRU.h
     bool Set(const std::string &key, const std::string &value) override {
-        bool result = false;
-        {
-            std::unique_lock<std::mutex> _ul(_mutex);
-            result = SimpleLRU::Set(key, value);
-        }
-        return result;
+        std::unique_lock<std::mutex> _ul(_mutex);
+        return SimpleLRU::Set(key, value);
     }
 
     // see SimpleLRU.h
     bool Delete(const std::string &key) override {
-        bool result = false;
-        {
-            std::unique_lock<std::mutex> _ul(_mutex);
-            result = SimpleLRU::Delete(key);
-        }
-        return result;
-    }
+        std::unique_lock<std::mutex> _ul(_mutex);
+        return SimpleLRU::Delete(key);
+}
 
     // see SimpleLRU.h
     bool Get(const std::string &key, std::string &value) override {
-        bool result = false;
-        {
-            std::unique_lock<std::mutex> _ul(_mutex);
-            result = SimpleLRU::Get(key, value);
-        }
-        return result;
+        std::unique_lock<std::mutex> _ul(_mutex);
+        return SimpleLRU::Get(key, value);
     }
 
 private:

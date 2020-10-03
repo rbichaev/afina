@@ -4,7 +4,7 @@
 #include <atomic>
 #include <thread>
 #include <condition_variable>
-#include <vector>
+#include <set>
 #include <algorithm>
 
 #include <afina/network/Server.h>
@@ -60,11 +60,11 @@ private:
     // максимальное число возможных потоков
     const int _max_num_of_threads = 100;
 
-    // вектор сокетов рабочих потоков
-    std::vector<int> _vector_client_sockets;
+    // множество сокетов рабочих потоков
+    std::set<int> _set_client_sockets;
 
-    // мьютекс для работы с вставкой/удалением из этого вектора
-    std::mutex _mutex_vector;
+    // мьютекс для работы с вставкой/удалением из этого множества
+    std::mutex _mutex_set;
 
     // conditional variable для ожидания завершения всех потоков в методе Join
     std::condition_variable _cond_var;
