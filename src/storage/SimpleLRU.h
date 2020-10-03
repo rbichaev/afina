@@ -93,6 +93,8 @@ public:
 
     // Implements Afina::Storage interface
     bool Get(const std::string &key, std::string &value) override;
+
+    using iterator_type = std::map<std::reference_wrapper<const std::string>, std::reference_wrapper<lru_node>, std::less<std::string>>::iterator;
 };
 
 } // namespace Backend

@@ -252,10 +252,8 @@ void ServerImpl::OnRun() {
             if (_vector_client_sockets.size() < _max_num_of_threads)
             {
                 _vector_client_sockets.push_back(client_socket);
-                std::cout << "BEGIN THREAD" << '\n';
                 std::thread thr(&ServerImpl::RunThread, this, client_socket);
                 thr.detach();
-                std::cout << "END THREAD" << '\n';
             }
             else
             {
