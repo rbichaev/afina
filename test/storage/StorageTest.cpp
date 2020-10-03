@@ -167,6 +167,7 @@ TEST(StorageTest, BigTest) {
 }
 
 TEST(StorageTest, MaxTest) {
+
     const size_t length = 20;
     SimpleLRU storage(2 * 1000 * length);
 
@@ -175,6 +176,7 @@ TEST(StorageTest, MaxTest) {
     for (long i = 0; i < 1100; ++i) {
         auto key = pad_space("Key " + std::to_string(i), length);
         auto val = pad_space("Val " + std::to_string(i), length);
+
         EXPECT_TRUE(storage.Put(key, val));
     }
 
